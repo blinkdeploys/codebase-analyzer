@@ -14,6 +14,8 @@ redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 client = OpenAI()
 
+DIRS_EXCLUDED = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', 'dist', 'build'}
+CODE_EXTENSIONS = ['.py', '.js', '.ts', '.java', '.go', '.rs', '.cpp', '.c', '.h', '.jsx', '.tsx', '.vue', '.rb', '.php', '.cs', '.swift', '.kt']
 
 class CodebaseAnalyzer:
     def __init__(self, job_id, repo_path, output_name):
@@ -35,7 +37,36 @@ class CodebaseAnalyzer:
 
     def scan_codebase(self):
         """Scan and collect all code files"""
-        pass
+        self.update_progress("scanning", {"step": "Scanning codebase"})
+        
+        # codebase from files
+        codebase = []
+        
+        # scan al files and folders in path
+        for root, dirs, filenames in os.walk(self.repo_path):
+            # only exclude the indicated folders that do not hold handwritten code
+            # or may make the project too large to analuyse
+            dirs[:] = [d for d in dirs if d not in DIRS_EXCLUDED]
+            
+            for filename in filenames:
+                file_path = Path(root) / filename
+                # only processs file with the expeceted extensions
+                if file_path.suffix in CODE_EXTENSIONS:
+                    try:
+                        # open file...
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            # read contents
+                            content = f.read()
+                            # add code text to codebase
+                            codebase.append(dict(path=str(file_path.relative_to(self.repo_path)),
+                                              content=content,
+                                              size=en(content)
+                                              )
+                                        )
+                    except Exception as e:
+                        print(f"Error reading {file_path}: {e}")
+        # deliver
+        return codebase
 
     def analyze_with_ai(self, files):
         """Use AI to analyze the codebase"""
