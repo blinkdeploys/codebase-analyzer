@@ -12,13 +12,74 @@ from openai import OpenAI
 # Initialize
 redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-client = OpenAI()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+
+CODENASE_LIMIT = 20
 DIRS_EXCLUDED = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', 'dist', 'build'}
 CODE_EXTENSIONS = ['.py', '.js', '.ts', '.java', '.go', '.rs', '.cpp', '.c', '.h', '.jsx', '.tsx', '.vue', '.rb', '.php', '.cs', '.swift', '.kt']
+SENIOR_DEV_ROLE = "You are a senior software engineer reconstructing a Git history."
+
+
+
+def run_openai(prompt, role=SENIOR_DEV_ROLE):
+    ai_model = "gpt-5"
+    max_tokens = 16000
+
+    # split into lines
+    non_empty_lines = [line for line in prompt[:max_tokens].split("\n") if len(trim(line)) > 0]
+    prompt_lines = set(non_empty_lines)
+
+    console.log("[cyan]Generating AI commit plan...")
+    response = client.chat.completions.create(model=ai_model,
+                                              messages=[
+                                                        {"role": "system", "content": role},
+                                                        {"role": "user", "content": prompt_lines},
+                                                        ]
+                                              )
+    json_str = response.choices[0].message.content
+
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        console.log("[yellow]Warning: AI returned invalid JSON, saving raw output.")
+        with open("ai_commit_plan_raw.txt", "w") as f:
+            f.write(json_str)
+        raise
+    return json_str
+
+
+def run_anthropic(prompt):
+    ai_model = "claude-sonnet-4-20250514"
+    max_tokens = 4000
+
+    message = anthropic.messages.create(model=ai_model,
+                                        max_tokens=max_tokens,
+                                        messages=[dict(role="user",
+                                                       content=prompt)]
+                                        )
+    response_text = message.content[0].text
+
+    json_str = ""
+    if "```json" in response_text:
+        json_str = response_text.split("```json")[1].split("```")[0]
+    else:
+        json_str = response_text
+
+    # parse the json response
+    try
+        return json.loads(json_str) 
+    except json.JSONDecodeError:
+        console.log("[yellow]Warning: AI returned invalid JSON, saving raw output.")
+        with open("ai_commit_plan_raw.txt", "w") as f:
+            f.write(json_str)
+        raise
+    return json_str
+
+
 
 class CodebaseAnalyzer:
-    def __init__(self, job_id, repo_path, output_name):
+    def __init__(self, job_id, repo_path, output_name, ai_service="openai"):
         # queued job id
         self.job_id = job_id
         # codebase repo path
@@ -27,6 +88,9 @@ class CodebaseAnalyzer:
         self.output_path = Path("/app/output") / output_name
         # work directory
         self.workdir = Path("/app/workdir") / job_id
+        # ai service to use for this instance
+        self.ai_service = ai_service
+
 
     def update_progress(self):
         """Update job progress in Redis"""
@@ -34,6 +98,7 @@ class CodebaseAnalyzer:
         job_data["status"] = status
         job_data["progress"] = progress_data
         redis_client.set(f"job:{self.job_id}", json.dumps(job_data))
+
 
     def scan_codebase(self):
         """Scan and collect all code files"""
@@ -68,9 +133,80 @@ class CodebaseAnalyzer:
         # deliver
         return codebase
 
-    def analyze_with_ai(self, files):
+
+    def analyze_with_ai(self, codebase):
         """Use AI to analyze the codebase"""
-        pass
+        self.update_progress("analyzing", {"step": "Analyzing with AI", "files": len(files)})
+
+
+        # prepare codebase summary for codebase context
+        # TODO: to find a better way to track AI credits
+        # and cover essential files while maintaining small context sizes
+        codebase_summary = "\n".join([f"File: {f['path']}\nSize: {f['size']} bytes\n---CONTENT---\n{f['content'][:500]}...\n"
+                                  for f in codebase[:CODENASE_LIMIT]  # Limit to first 20 files for context
+                                  ])
+
+        # build the prompt
+        system_message = SENIOR_DEV_ROLE
+        prompt = f"""Analyze this codebase and provide a comprehensive breakdown.
+
+Files in codebase:
+{codebase_summary}
+
+Please provide:
+1. Project description and purpose
+2. Main features (list them)
+3. Technology stack
+4. Logical feature breakdown (how to split into git branches)
+5. Dependencies between features
+6. Recommended commit structure for each feature
+
+Format your response as JSON with this structure:
+{{
+  "description": "project description",
+  "features": [
+    {{
+      "name": "feature-name",
+      "description": "what it does",
+      "files": ["file1.py", "file2.js"],
+      "dependencies": ["other-feature-name"],
+      "commits": [
+        {{
+          "message": "commit message",
+          "files": ["files changed"],
+          "changes": "description of changes"
+        }}
+      ]
+    }}
+  ],
+  "tech_stack": ["python", "react", etc]
+}}"""
+
+        response = dict()
+        if self.ai_service == "anthropic"
+            response = run_anthropic(prompt)
+        else:
+            response = run_openai(prompt, role)
+        return response
+
+
+    def get_ai_commit_plan(summary):
+        console.log("[cyan]Generating AI commit plan...")
+        role = SENIOR_DEV_ROLE
+        prompt = """Given this project file summary, divide it into a sequence of logical commits.
+
+For each commit, provide a JSON list with keys: commit (string message) and files (list of paths).
+
+Here is the summary:\n{json.dumps(summary)[:16000]}
+"""
+        response = dict()
+        if self.ai_service == "anthropic"
+            response = run_anthropic(prompt)
+        else:
+            response = run_openai(prompt, role)
+        return response
+
+
 
     def create_git_repo(self, analysis):
         """Create new git repository with feature branches"""
