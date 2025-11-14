@@ -84,8 +84,15 @@ async def analyze_codebase(request: AnalysisRequest,
 async def get_status(job_id: str):
     """Get the status of an analysis job"""
     # fetch job data
+    job_data = redis_client.get(f"job:{job_id}")
+
     # return 404 if data does not exist
+    if not job_data:
+        raise HTTPException(status_code=404, detail="Job not found")
+
     # return data if it does
+    data = json.loads(job_data)
+    return AnalysisStatus(**data)
 
 
 @app.post("/webhook")
