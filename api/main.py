@@ -48,13 +48,44 @@ async def analyze_codebase(request: AnalysisRequest,
                            background_tasks: BackgroundTasks
                            ):
     """Submit a codebase for analysis"""
-    pass
+    
+    # validate the repo path
+    if not os.path.exists(request.repo_path):
+        raise HTTPException(status_code=400, detail="Repository path does not exist")
+    
+    # generate the job id
+    job_id = str(uuid.uuid4())
+
+    # create job data
+    job_data = dict(job_id=job_id,
+                    repo_path=request.repo_path,
+                    output_name=request.output_name,
+                    description=request.description,
+                    status="queued",
+                    progress=dict()
+                    )
+
+    # store job in redis
+    redis_client.set(f"job:{job_id}", json.dumps(job_data))
+    redis_client.lpush("job_queue", job_id)
+
+    # package
+    response = dict(job_id=job_id,
+                    status="queued",
+                    message="Analysis job submitted successfully"
+                    )
+    # deliver
+    return response
+
+
 
 
 @app.get("/status/{job_id}")
 async def get_status(job_id: str):
     """Get the status of an analysis job"""
-    pass
+    # fetch job data
+    # return 404 if data does not exist
+    # return data if it does
 
 
 @app.post("/webhook")
