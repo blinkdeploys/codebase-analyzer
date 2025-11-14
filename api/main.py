@@ -19,7 +19,7 @@ redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 
 
 def initalise_job(request: AnalysisRequest,
-                 job_id: str) -> Dict:
+                  job_id: str) -> Dict:
     job_data = dict(job_id=job_id,
                     repo_path=request.repo_path,
                     output_name=request.output_name,
