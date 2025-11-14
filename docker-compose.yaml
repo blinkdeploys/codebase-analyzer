@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: codebase_analyzer_api
+    ports:
+      - "${API_PORT}:${API_PORT}"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=redis://redis:6379
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-default_secret}
+    volumes:
+      - ./workdir:/app/workdir
+      - ./output:/app/output
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - analyzer_network
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: codebase_analyzer_worker
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=${REDIS_URL}
+    volumes:
+      - ./workdir:/app/workdir
+      - ./output:/app/output
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - analyzer_network
+
+  cli:
+    build:
+      context: ./cli
+      dockerfile: Dockerfile
+    container_name: codebase_analyzer_cli
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./workdir:/app/workdir
+      - ./output:/app/output
+      - ~/.gitconfig:/root/.gitconfig:ro
+    profiles:
+      - cli
+    networks:
+      - analyzer_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: codebase_analyzer_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - analyzer_network
+
+volumes:
+  redis_data:
+
+networks:
+  analyzer_network:
+    driver: bridge
+
