@@ -219,7 +219,14 @@ class CodebaseAnalyzer:
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+    # Analysis Breakdown
     # These collection of member methods handle code analsysis in subtasks
+
+    # 1. Analyze codebase to create a commit plan
+    # 2. Build the repo
+    # 3. Update the docs with changelogs
+    # 4. Push to github
+
     def get_ai_commit_plan(summary):
         console.log("[cyan]Generating AI commit plan...")
         role = SENIOR_DEV_ROLE
@@ -230,6 +237,19 @@ class CodebaseAnalyzer:
         else:
             response = run_openai(prompt, role)
         return response
+
+
+    def rebuild_repo(project_path, commit_plan, simulate_dates=False):
+        pass
+
+
+    def generate_docs(project_path, commit_plan):
+        pass
+
+
+    def push_to_github(project_path, remote_url):
+        pass
+
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
