@@ -1,3 +1,4 @@
 openai
 anthropic==0.7.0
 redis==5.0.1
+console-logging

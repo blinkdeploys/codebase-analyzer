@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 from anthropic import Anthropic
 from openai import OpenAI
+from git import Repo
 
 
 # Initialize
@@ -227,7 +228,7 @@ class CodebaseAnalyzer:
     # 3. Update the docs with changelogs
     # 4. Push to github
 
-    def get_ai_commit_plan(summary):
+    def get_ai_commit_plan(self, summary):
         console.log("[cyan]Generating AI commit plan...")
         role = SENIOR_DEV_ROLE
         prompt = COMMIT_PLAN_PROMPT_TEMPLATE.replace("[CODEBASE_SUMMARY]", {json.dumps(summary)[:16000]})
@@ -239,16 +240,55 @@ class CodebaseAnalyzer:
         return response
 
 
-    def rebuild_repo(project_path, commit_plan, simulate_dates=False):
+    # TOSO: to include a local testing
+    def rebuild_repo(self, project_path, commit_plan, simulate_dates=False):
+        console.log("[cyan]Initializing Git repo...")
+
+        # initlize the git repo
+        repo = Repo.init(project_path)
+        repo.git.add(A=True)
+        repo.index.commit("Initialize repository for AI reconstruction")
+
+        # get base date
+        base_date = datetime.now() - timedelta(days=len(commit_plan))
+
+        # iterate on the commits in the commit plan
+        for i, commit in enumerate(commit_plan, start=1):
+            msg = commit.get("commit") or commit.get("message", "Feature update")
+            # locate the code files
+            files = commit.get("files", [])
+            for f in files:
+                try:
+                    # git add file
+                    repo.git.add(f)
+                except Exception:
+                    pass
+            # commit time
+            commit_time = (base_date + timedelta(days=i)).strftime("%Y-%m-%dT%H:%M:%S")
+            env = os.environ.copy()
+            # simulate dates: update the commit times
+            if simulate_dates:
+                env["GIT_AUTHOR_DATE"] = commit_time
+                env["GIT_COMMITTER_DATE"] = commit_time
+            # commit with the message
+            repo.index.commit(msg, env=env)
+            console.log(f"[green]Committed:[/green] {msg}")
+
+        console.log("[bold green]✔ Repo successfully rebuilt!")
+
+
+    def generate_docs(self, project_path, commit_plan):
         pass
 
 
-    def generate_docs(project_path, commit_plan):
-        pass
-
-
-    def push_to_github(project_path, remote_url):
-        pass
+    def push_to_github(self, project_path, remote_url):
+        repo = Repo(project_path)
+        console.log(f"[cyan]Pushing to {remote_url}...")
+        if "origin" not in [r.name for r in repo.remotes]:
+            repo.create_remote("origin", remote_url)
+        repo.git.branch("-M", "main")
+        repo.git.push("-u", "origin", "main")
+        console.log("[bold green]✔ Repo pushed to GitHub!")
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
