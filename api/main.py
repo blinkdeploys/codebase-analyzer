@@ -5,7 +5,7 @@ import uuid
 import os
 import hmac
 import hashlib
-from typing import Optional
+from typing import Optional, Dict
 from .models import AnalysisRequest, AnalysisStatus
 from .utils import verify_webhook_signature
 
@@ -18,6 +18,16 @@ app = FastAPI(title="Codebase Analyzer API")
 redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 
 
+def initalise_job(request: AnalysisRequest,
+                 job_id: str) -> Dict:
+    job_data = dict(job_id=job_id,
+                    repo_path=request.repo_path,
+                    output_name=request.output_name,
+                    description=request.description,
+                    status="queued",
+                    progress=dict()
+                    )
+    return job_data
 
 
 
@@ -57,13 +67,8 @@ async def analyze_codebase(request: AnalysisRequest,
     job_id = str(uuid.uuid4())
 
     # create job data
-    job_data = dict(job_id=job_id,
-                    repo_path=request.repo_path,
-                    output_name=request.output_name,
-                    description=request.description,
-                    status="queued",
-                    progress=dict()
-                    )
+    job_id = str(uuid.uuid4())
+    job_data = initalise_job(request, job_id)
 
     # store job in redis
     redis_client.set(f"job:{job_id}", json.dumps(job_data))
@@ -100,5 +105,28 @@ async def webhook_handler(request: AnalysisRequest,
                           x_webhook_signature: Optional[str] = Header(None)
                           ):
     """Webhook endpoint for external integrations"""
-    pass
+
+    # autth: check the if signature is provided with webhook
+    if x_webhook_signature:
+        payload = json.dumps(request.dict()).encode()
+        if not verify_webhook_signature(payload, x_webhook_signature):
+            # raise exception if signature invalid
+            raise HTTPException(status_code=401, detail="Invalid signature")
+    
+    # create job data
+    job_id = str(uuid.uuid4())
+    job_data = initalise_job(request, job_id)
+
+    # persist to redis
+    redis_client.set(f"job:{job_id}", json.dumps(job_data))
+    redis_client.lpush("job_queue", job_id)
+
+    # package and deliver
+    response = dict(job_id=job_id,
+                    status="queued",
+                    message="Analysis job submitted successfully"
+                    webhook_received=True
+                    )
+    return response
+
 
